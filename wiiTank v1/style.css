@@ -1,0 +1,20 @@
+body {
+    background-color: rgb(11, 101, 245);
+}
+#introTitle {
+    position: absolute;
+    left: 50%;
+    top: 30%;
+    transform: translate(-50%, -50%);
+}
+
+#gameStartButton {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 20px;
+    padding: 10px 20px;
+    border-radius: 20px;
+}
+

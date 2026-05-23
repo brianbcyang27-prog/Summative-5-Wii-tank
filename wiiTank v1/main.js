@@ -22,14 +22,14 @@ function gameStart() {
         canvas.style.color = "black";
         
         document.body.style.backgroundBlendMode = "color";
-        document.body.style.backgroundColor = "white";
+        document.body.style.backgroundColor = "rgb(235, 202, 106)";
         
 
         //TANK body
         const tank = document.createElement("div");
         tank.id = "playertank";
-        tank.style.width = "60px";
-        tank.style.height = "60px";
+        tank.style.width = "30px";
+        tank.style.height = "30px";
         tank.style.background = "green";
         tank.style.position = "absolute";
         tank.style.left = "300px";
@@ -39,13 +39,13 @@ function gameStart() {
         // BARREL
         const barrel = document.createElement("div");
 
-        barrel.style.width = "40px";
-        barrel.style.height = "10px";
+        barrel.style.width = "30px";
+        barrel.style.height = "8px";
         barrel.style.background = "black";
         barrel.style.position = "absolute";
 
-        barrel.style.left = "30px";
-        barrel.style.top = "25px";
+        barrel.style.left = "15px";
+        barrel.style.top = "12.5px";
 
         barrel.style.transformOrigin = "0% 50%";
 
@@ -69,6 +69,51 @@ function gameStart() {
     }
 }
 
+function createWalls() {
+
+    // TOP WALL
+    const topWall = document.createElement("div");
+    topWall.style.position = "absolute";
+    topWall.style.top = "0";
+    topWall.style.left = "0";
+    topWall.style.width = "100%";
+    topWall.style.height = "20px";
+    topWall.style.background = "black";
+    document.body.appendChild(topWall);
+
+
+    // BOTTOM WALL
+    const bottomWall = document.createElement("div");
+    bottomWall.style.position = "absolute";
+    bottomWall.style.bottom = "0";
+    bottomWall.style.left = "0";
+    bottomWall.style.width = "100%";
+    bottomWall.style.height = "20px";
+    bottomWall.style.background = "black";
+    document.body.appendChild(bottomWall);
+
+
+    // LEFT WALL
+    const leftWall = document.createElement("div");
+    leftWall.style.position = "absolute";
+    leftWall.style.top = "0";
+    leftWall.style.left = "0";
+    leftWall.style.width = "20px";
+    leftWall.style.height = "100%";
+    leftWall.style.background = "black";
+    document.body.appendChild(leftWall);
+
+
+    // RIGHT WALL
+    const rightWall = document.createElement("div");
+    rightWall.style.position = "absolute";
+    rightWall.style.top = "0";
+    rightWall.style.right = "0";
+    rightWall.style.width = "20px";
+    rightWall.style.height = "100%";
+    rightWall.style.background = "black";
+    document.body.appendChild(rightWall);
+}
 
 function tankMovement(event) {
 

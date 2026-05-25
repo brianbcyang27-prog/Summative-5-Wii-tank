@@ -10,17 +10,6 @@ function gameStart() {
         document.getElementById("gameInfoBg").style.display = "none";
         document.getElementById("gameStartButton").style.display = "none";
         
-        const canvas = document.getElementById("gameStage");
-        canvas.width = window.innerWidth;
-        canvas.height = window.innerHeight;
-        canvas.style.display = "block";
-        canvas.style.position = "absolute";
-        canvas.style.left = "0";
-        canvas.style.top = "0";
-        canvas.style.zIndex = "0";
-        canvas.style.border = "1px solid black";
-        canvas.style.color = "black";
-        
         document.body.style.backgroundBlendMode = "color";
         document.body.style.backgroundColor = "rgb(235, 202, 106)";
         
@@ -128,15 +117,15 @@ function tankMovement(event) {
 
     let key = event.key;
 
-    if(key == "w" && top > 0){
+    if(key == "w" && top > 20){
         tank.style.top = (top - speed) + 'px';
     }
 
-    if(key == "s" && top < window.innerHeight - tankSize){
+    if(key == "s" && top < 743){
         tank.style.top = (top + speed) + 'px';
     }
 
-    if(key == "a" && left > 0){
+    if(key == "a" && left > 30){
         tank.style.left = (left - speed) + 'px';
     }
 

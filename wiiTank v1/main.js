@@ -7,6 +7,11 @@ let bullets = [];
 let barrelAngle = 0;
 const TANK_SIZE = 30;
 const BULLET_SPEED = 6;
+const CELL_SIZE = 40;
+const PLAYER_SPEED = 200; // pixels per second
+let gridCols = 0;
+let gridRows = 0;
+let keys = {};
 
 // AABB collision check
 function rectsOverlap(r1, r2) {
@@ -82,63 +87,116 @@ function gameStart() {
     }
 }
 
-function createWalls() {
+function generateWalls() {
 
     walls = [];
 
-    const makeWall = (styles) => {
-        const wall = document.createElement("div");
-        wall.style.position = "absolute";
-        wall.style.background = "black";
-        Object.assign(wall.style, styles);
-        document.body.appendChild(wall);
-        walls.push(wall);
-        return wall;
-    };
+    gridCols = Math.floor(window.innerWidth / CELL_SIZE);
+    gridRows = Math.floor(window.innerHeight / CELL_SIZE);
 
-    // TOP WALL
-    makeWall({ top: "0", left: "0", width: "100%", height: "20px" });
+    // Initialize grid: 0 = empty, 1 = wall
+    let grid = [];
+    for (let y = 0; y < gridRows; y++) {
+        grid[y] = [];
+        for (let x = 0; x < gridCols; x++) {
+            grid[y][x] = (x === 0 || x === gridCols - 1 || y === 0 || y === gridRows - 1) ? 1 : 0;
+        }
+    }
 
-    // BOTTOM WALL
-    makeWall({ bottom: "0", left: "0", width: "100%", height: "20px" });
+    // Fill ~20% of interior cells as random walls
+    const interiorCols = gridCols - 2;
+    const interiorRows = gridRows - 2;
+    const wallCount = Math.floor(interiorCols * interiorRows * 0.2);
 
-    // LEFT WALL
-    makeWall({ top: "0", left: "0", width: "20px", height: "100%" });
+    for (let i = 0; i < wallCount; i++) {
+        const x = 1 + Math.floor(Math.random() * interiorCols);
+        const y = 1 + Math.floor(Math.random() * interiorRows);
+        if (grid[y] && grid[y][x] === 0) {
+            grid[y][x] = 1;
+        }
+    }
 
-    // RIGHT WALL
-    makeWall({ top: "0", right: "0", width: "20px", height: "100%" });
+    // Create wall elements from grid
+    for (let y = 0; y < gridRows; y++) {
+        for (let x = 0; x < gridCols; x++) {
+            if (grid[y][x] === 1) {
+                const wall = document.createElement("div");
+                wall.style.position = "absolute";
+                wall.style.background = "black";
+                wall.style.left = (x * CELL_SIZE) + 'px';
+                wall.style.top = (y * CELL_SIZE) + 'px';
+                wall.style.width = CELL_SIZE + 'px';
+                wall.style.height = CELL_SIZE + 'px';
+                document.body.appendChild(wall);
+                walls.push(wall);
+            }
+        }
+    }
+
+    console.log(`Walls generated! Grid: ${gridCols}x${gridRows}, Wall count: ${walls.length}`);
+
+    // Ensure tank isn't stuck inside a wall
+    const tank = document.getElementById('playertank');
+    if (tank) {
+        const tl = parseInt(tank.style.left);
+        const tt = parseInt(tank.style.top);
+        if (isPositionBlocked(tl, tt, TANK_SIZE, TANK_SIZE)) {
+            for (let y = 1; y < gridRows - 1; y++) {
+                for (let x = 1; x < gridCols - 1; x++) {
+                    const cx = x * CELL_SIZE;
+                    const cy = y * CELL_SIZE;
+                    if (!isPositionBlocked(cx, cy, TANK_SIZE, TANK_SIZE)) {
+                        tank.style.left = cx + 'px';
+                        tank.style.top = cy + 'px';
+                        console.log(`Tank repositioned to clear cell (${x}, ${y})`);
+                        return;
+                    }
+                }
+            }
+        }
+    }
 }
 
-function tankMovement(event) {
+function updatePlayer(dt) {
 
     const tank = document.getElementById('playertank');
+    if (!tank) return;
+
     let left = parseInt(tank.style.left);
     let top = parseInt(tank.style.top);
-    const speed = 20;
 
-    // Compute desired new position
-    let newLeft = left;
-    let newTop = top;
+    // Read key flags into direction vector
+    let dx = 0, dy = 0;
+    if (keys['w'] || keys['W']) dy = -1;
+    if (keys['s'] || keys['S']) dy = 1;
+    if (keys['a'] || keys['A']) dx = -1;
+    if (keys['d'] || keys['D']) dx = 1;
 
-    if (event.key == "w") newTop = top - speed;
-    if (event.key == "s") newTop = top + speed;
-    if (event.key == "a") newLeft = left - speed;
-    if (event.key == "d") newLeft = left + speed;
+    // Normalize diagonal so it's not faster
+    if (dx !== 0 && dy !== 0) {
+        dx *= 0.7071;
+        dy *= 0.7071;
+    }
 
-    // Clamp to border walls (20px borders)
-    newLeft = Math.max(20, Math.min(newLeft, window.innerWidth - TANK_SIZE - 20));
-    newTop = Math.max(20, Math.min(newTop, window.innerHeight - TANK_SIZE - 20));
+    const moveX = dx * PLAYER_SPEED * dt;
+    const moveY = dy * PLAYER_SPEED * dt;
+
+    let newLeft = left + moveX;
+    let newTop = top + moveY;
+
+    // Clamp to playable area (inside grid border walls)
+    const maxLeft = gridCols * CELL_SIZE - CELL_SIZE - TANK_SIZE;
+    const maxTop = gridRows * CELL_SIZE - CELL_SIZE - TANK_SIZE;
+    newLeft = Math.max(CELL_SIZE, Math.min(newLeft, maxLeft));
+    newTop = Math.max(CELL_SIZE, Math.min(newTop, maxTop));
 
     // Check wall collisions — allow sliding along walls
     if (isPositionBlocked(newLeft, newTop, TANK_SIZE, TANK_SIZE)) {
         if (!isPositionBlocked(newLeft, top, TANK_SIZE, TANK_SIZE)) {
-            // Can move horizontally only
             newTop = top;
         } else if (!isPositionBlocked(left, newTop, TANK_SIZE, TANK_SIZE)) {
-            // Can move vertically only
             newLeft = left;
         } else {
-            // Fully blocked
             newLeft = left;
             newTop = top;
         }
@@ -146,39 +204,6 @@ function tankMovement(event) {
 
     tank.style.left = newLeft + 'px';
     tank.style.top = newTop + 'px';
-}
-
-function createRandomWalls() {
-
-    for(let i = 0; i < 50; i++){
-        const wall = document.createElement("div");
-        wall.style.position = "absolute";
-        wall.style.width = "100px";
-        wall.style.height = "20px";
-        wall.style.background = "black";
-        wall.id = "wall" + i;
-
-        const randomX = Math.random() * (window.innerWidth - 140) + 20;
-        const randomY = Math.random() * (window.innerHeight - 140) + 20;
-        const randomRotation = Math.random() * 4;
-
-        if(randomRotation < 1){
-            wall.style.transform = `rotate(0deg)`;
-        } else if(randomRotation < 2){
-            wall.style.transform = `rotate(90deg)`;
-        } else if(randomRotation < 3){
-            wall.style.transform = `rotate(180deg)`;
-        } else {
-            wall.style.transform = `rotate(270deg)`;
-        }
-
-        wall.style.left = randomX + 'px';
-        wall.style.top = randomY + 'px';
-
-        document.body.appendChild(wall);
-        walls.push(wall);
-    }
-    console.log("Random walls created!");
 }
 
 function spawnEnemies() {
@@ -192,9 +217,11 @@ function spawnEnemies() {
         enemy.style.borderRadius = "4px";
 
         let x, y, attempts = 0;
+        const gridBoundX = gridCols * CELL_SIZE - CELL_SIZE - TANK_SIZE;
+        const gridBoundY = gridRows * CELL_SIZE - CELL_SIZE - TANK_SIZE;
         do {
-            x = Math.random() * (window.innerWidth - TANK_SIZE - 40) + 20;
-            y = Math.random() * (window.innerHeight - TANK_SIZE - 40) + 20;
+            x = Math.random() * (gridBoundX - CELL_SIZE) + CELL_SIZE;
+            y = Math.random() * (gridBoundY - CELL_SIZE) + CELL_SIZE;
             attempts++;
         } while (isPositionBlocked(x, y, TANK_SIZE, TANK_SIZE) && attempts < 100);
 
@@ -311,9 +338,16 @@ function updateBullets() {
     }
 }
 
-function gameLoop() {
+let lastTime = 0;
+
+function gameLoop(time) {
+    if (lastTime === 0) lastTime = time;
+    const dt = Math.min((time - lastTime) / 1000, 0.05);
+    lastTime = time;
+
     if (gameStatus === "running") {
         updateBullets();
+        updatePlayer(dt);
     }
     requestAnimationFrame(gameLoop);
 }
@@ -322,16 +356,17 @@ function gameLoop() {
 
 document.getElementById("gameStartButton").addEventListener("click", () => {
     gameStart();
-    createWalls();
-    createRandomWalls();
+    generateWalls();
     spawnEnemies();
     gameLoop();
 });
 
 document.addEventListener("keydown", (event) => {
-    if (gameStatus === "running") {
-        tankMovement(event);
-    }
+    keys[event.key] = true;
+});
+
+document.addEventListener("keyup", (event) => {
+    keys[event.key] = false;
 });
 
 document.addEventListener("click", (e) => {

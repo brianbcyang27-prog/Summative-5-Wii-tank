@@ -13,6 +13,13 @@ let gridCols = 0;
 let gridRows = 0;
 let keys = {};
 
+// Level / score / timer
+let level = 1;
+let score = 0;
+let timeRemaining = 0;
+let lastTime = 0;
+let gameLoopRunning = false;
+
 // AABB collision check
 function rectsOverlap(r1, r2) {
     return !(r2.left >= r1.right || r2.right <= r1.left ||
@@ -87,7 +94,7 @@ function gameStart() {
     }
 }
 
-function generateWalls() {
+function generateWalls(lvl) {
 
     walls = [];
 
@@ -103,10 +110,11 @@ function generateWalls() {
         }
     }
 
-    // Fill ~20% of interior cells as random walls
+    // More walls per level: 18% + 2.5%/level, capped at 30%
+    const density = Math.min(0.18 + (lvl - 1) * 0.025, 0.30);
     const interiorCols = gridCols - 2;
     const interiorRows = gridRows - 2;
-    const wallCount = Math.floor(interiorCols * interiorRows * 0.2);
+    const wallCount = Math.floor(interiorCols * interiorRows * density);
 
     for (let i = 0; i < wallCount; i++) {
         const x = 1 + Math.floor(Math.random() * interiorCols);
@@ -141,15 +149,26 @@ function generateWalls() {
         const tl = parseInt(tank.style.left);
         const tt = parseInt(tank.style.top);
         if (isPositionBlocked(tl, tt, TANK_SIZE, TANK_SIZE)) {
-            for (let y = 1; y < gridRows - 1; y++) {
-                for (let x = 1; x < gridCols - 1; x++) {
-                    const cx = x * CELL_SIZE;
-                    const cy = y * CELL_SIZE;
-                    if (!isPositionBlocked(cx, cy, TANK_SIZE, TANK_SIZE)) {
-                        tank.style.left = cx + 'px';
-                        tank.style.top = cy + 'px';
-                        console.log(`Tank repositioned to clear cell (${x}, ${y})`);
-                        return;
+            // Scan outward from the grid center so the tank spawns in open space
+            const centerCol = Math.floor(gridCols / 2);
+            const centerRow = Math.floor(gridRows / 2);
+            const maxRadius = Math.max(gridCols, gridRows);
+            for (let r = 0; r < maxRadius; r++) {
+                for (let dy = -r; dy <= r; dy++) {
+                    for (let dx = -r; dx <= r; dx++) {
+                        // Only check cells at the current ring radius
+                        if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+                        const x = centerCol + dx;
+                        const y = centerRow + dy;
+                        if (x < 1 || x >= gridCols - 1 || y < 1 || y >= gridRows - 1) continue;
+                        const px = x * CELL_SIZE;
+                        const py = y * CELL_SIZE;
+                        if (!isPositionBlocked(px, py, TANK_SIZE, TANK_SIZE)) {
+                            tank.style.left = px + 'px';
+                            tank.style.top = py + 'px';
+                            console.log(`Tank repositioned to clear cell (${x}, ${y})`);
+                            return;
+                        }
                     }
                 }
             }
@@ -206,8 +225,9 @@ function updatePlayer(dt) {
     tank.style.top = newTop + 'px';
 }
 
-function spawnEnemies() {
-    for (let i = 0; i < 5; i++) {
+function spawnEnemies(lvl) {
+    const count = Math.min(2 + lvl, 10);
+    for (let i = 0; i < count; i++) {
         const enemy = document.createElement("div");
         enemy.className = "enemy";
         enemy.style.width = TANK_SIZE + "px";
@@ -309,36 +329,135 @@ function updateBullets() {
         }
     }
 
-    // Win check
+    // Level complete — all enemies destroyed
     if (enemies.length === 0 && gameStatus === "running") {
-        gameStatus = "won";
-        const winMsg = document.createElement("div");
-        winMsg.id = "gameWin";
-        winMsg.textContent = "You destroyed all enemies!";
-        winMsg.style.cssText = `
-            position: absolute; z-index: 10; left: 50%; top: 40%;
-            transform: translate(-50%, -50%);
-            color: white; font-family: Arial; font-size: 48px;
-            text-align: center; background: rgba(0,0,0,0.7);
-            padding: 40px; border-radius: 20px;
-        `;
-        document.body.appendChild(winMsg);
-
-        const restartBtn = document.createElement("button");
-        restartBtn.id = "restartButton";
-        restartBtn.textContent = "restart";
-        restartBtn.style.cssText = `
-            position: absolute; z-index: 10; left: 50%; top: 60%;
-            transform: translate(-50%, -50%);
-            width: 200px; font-size: 50px; padding: 10px 20px;
-            border-radius: 20px; cursor: pointer;
-        `;
-        restartBtn.addEventListener("click", () => location.reload());
-        document.body.appendChild(restartBtn);
+        gameStatus = "levelComplete";
+        levelComplete();
     }
 }
 
-let lastTime = 0;
+// ==================== HUD ====================
+
+function createHUD() {
+    document.getElementById('hudLevel')?.remove();
+    document.getElementById('hudScore')?.remove();
+    document.getElementById('hudTimer')?.remove();
+
+    const style = 'position:fixed;top:10px;color:white;font-family:Arial;font-size:22px;z-index:100;pointer-events:none;';
+
+    const lvl = document.createElement('div');
+    lvl.id = 'hudLevel'; lvl.style.cssText = style + 'left:20px;';
+    document.body.appendChild(lvl);
+
+    const scr = document.createElement('div');
+    scr.id = 'hudScore'; scr.style.cssText = style + 'left:50%;transform:translateX(-50%);';
+    document.body.appendChild(scr);
+
+    const tmr = document.createElement('div');
+    tmr.id = 'hudTimer'; tmr.style.cssText = style + 'right:20px;';
+    document.body.appendChild(tmr);
+
+    updateHUD();
+}
+
+function updateHUD() {
+    const lvlEl = document.getElementById('hudLevel');
+    const scrEl = document.getElementById('hudScore');
+    const tmrEl = document.getElementById('hudTimer');
+
+    if (lvlEl) lvlEl.textContent = `Level ${level}`;
+    if (scrEl) scrEl.textContent = `Score: ${score}`;
+
+    if (tmrEl) {
+        const t = Math.ceil(timeRemaining);
+        tmrEl.textContent = `Time: ${t}s`;
+        tmrEl.style.color = t <= 10 ? '#e74c3c' : 'white';
+    }
+}
+
+// ==================== LEVEL SETUP ====================
+
+function setUpLevel(lvl) {
+    enemies.forEach(e => e.remove());
+    bullets.forEach(b => b.remove());
+    walls.forEach(w => w.remove());
+    enemies = [];
+    bullets = [];
+    walls = [];
+
+    const tank = document.getElementById('playertank');
+    if (tank) {
+        tank.style.left = Math.floor(window.innerWidth / 2) + 'px';
+        tank.style.top = Math.floor(window.innerHeight / 2) + 'px';
+    }
+
+    gameStatus = "running";
+    // Set timer: 60s - 3s/level, minimum 25s
+    timeRemaining = Math.max(25, 60 - (lvl - 1) * 3);
+    level = lvl;
+
+    generateWalls(lvl);
+    spawnEnemies(lvl);
+    updateHUD();
+
+    // Start game loop once
+    if (!gameLoopRunning) {
+        gameLoopRunning = true;
+        lastTime = 0;
+        requestAnimationFrame(gameLoop);
+    }
+}
+
+// ==================== LEVEL COMPLETE ====================
+
+function levelComplete() {
+    const bonus = Math.floor(timeRemaining) * 10;
+    score += bonus;
+
+    const msg = document.createElement('div');
+    msg.style.cssText = `
+        position:fixed;z-index:200;left:50%;top:45%;transform:translate(-50%,-50%);
+        color:#27ae60;font-family:Arial;font-size:52px;font-weight:bold;
+        text-align:center;text-shadow:0 0 30px #27ae60;
+        background:rgba(0,0,0,0.6);padding:30px 50px;border-radius:16px;
+        pointer-events:none;transition:opacity 0.5s;
+    `;
+    msg.innerHTML = `Level ${level} Clear!<br><span style="font-size:24px;color:#f39c12;">+${bonus} time bonus</span>`;
+    document.body.appendChild(msg);
+
+    setTimeout(() => {
+        msg.style.opacity = '0';
+        setTimeout(() => { msg.remove(); setUpLevel(level + 1); }, 500);
+    }, 1500);
+}
+
+// ==================== GAME OVER ====================
+
+function gameOver() {
+    gameStatus = "over";
+
+    const ov = document.createElement('div');
+    ov.id = 'gameOverScreen';
+    ov.style.cssText = `
+        position:fixed;z-index:300;left:0;top:0;width:100%;height:100%;
+        background:rgba(0,0,0,0.8);display:flex;flex-direction:column;
+        align-items:center;justify-content:center;
+        font-family:Arial;color:white;
+    `;
+    ov.innerHTML = `
+        <h1 style="color:#e74c3c;font-size:64px;margin:0;text-shadow:0 0 30px #e74c3c;">TIME'S UP!</h1>
+        <p style="font-size:28px;margin:15px 0 5px;">Reached Level ${level}</p>
+        <p style="font-size:32px;color:#f39c12;margin:5px 0 30px;">Final Score: ${score}</p>
+        <button id="gameOverRestart" style="padding:15px 50px;font-size:24px;cursor:pointer;
+            background:#e94560;border:none;border-radius:10px;color:white;">
+            PLAY AGAIN
+        </button>
+    `;
+    document.body.appendChild(ov);
+    document.getElementById('gameOverRestart').addEventListener('click', () => location.reload());
+}
+
+// ==================== GAME LOOP ====================
 
 function gameLoop(time) {
     if (lastTime === 0) lastTime = time;
@@ -346,19 +465,24 @@ function gameLoop(time) {
     lastTime = time;
 
     if (gameStatus === "running") {
+        timeRemaining -= dt;
+        if (timeRemaining <= 0) {
+            timeRemaining = 0;
+            gameOver();
+        }
+        updateHUD();
         updateBullets();
         updatePlayer(dt);
     }
     requestAnimationFrame(gameLoop);
 }
 
-// --- Event wiring ---
+// ==================== EVENT WIRING ====================
 
 document.getElementById("gameStartButton").addEventListener("click", () => {
     gameStart();
-    generateWalls();
-    spawnEnemies();
-    gameLoop();
+    createHUD();
+    setUpLevel(1);
 });
 
 document.addEventListener("keydown", (event) => {
@@ -370,8 +494,7 @@ document.addEventListener("keyup", (event) => {
 });
 
 document.addEventListener("click", (e) => {
-    // Shoot on click, but not if clicking the start button
-    if (e.target.id !== "gameStartButton") {
+    if (e.target.id !== "gameStartButton" && e.target.id !== "gameOverRestart") {
         shoot();
     }
 });

@@ -9,6 +9,7 @@ const TANK_SIZE = 30;
 const BULLET_SPEED = 6;
 const CELL_SIZE = 40;
 const PLAYER_SPEED = 200; // pixels per second
+const ENEMY_SPEED = 80; // pixels per second
 let gridCols = 0;
 let gridRows = 0;
 let keys = {};
@@ -19,6 +20,32 @@ let score = 0;
 let timeRemaining = 0;
 let lastTime = 0;
 let gameLoopRunning = false;
+
+const LEVEL_THEMES = [
+    "rgb(235, 202, 106)", // desert
+    "rgb(85, 130, 85)",   // forest
+    "rgb(70, 90, 140)",   // night blue
+    "rgb(120, 80, 80)",   // wasteland
+    "rgb(90, 70, 120)"    // purple zone
+];
+
+const WALL_THEMES = [
+    "#2d2d2d",
+    "#3b4d3b",
+    "#394766",
+    "#4d3b32",
+    "#47345c"
+];
+
+function getThemeIndex(lvl) {
+    return Math.floor((lvl - 1) / 3) % LEVEL_THEMES.length;
+}
+
+function updateBackgroundTheme(lvl) {
+    const themeIndex = getThemeIndex(lvl);
+    document.body.style.transition = "background-color 1s ease";
+    document.body.style.backgroundColor = LEVEL_THEMES[themeIndex];
+}
 
 // AABB collision check
 function rectsOverlap(r1, r2) {
@@ -38,18 +65,10 @@ function isPositionBlocked(x, y, w, h) {
 
 function gameStart() {
     if (gameStatus == 0) {
-        alert("welcome to the tank game! use the W,S,A,D keys to move and mouse to shoot. good luck!");
-        gameStatus = "running";
-        console.log("Game started! gameStatus : ", gameStatus);
-        
-        document.getElementById("introTitle").style.display = "none";
-        document.getElementById("gameInfoBg").style.display = "none";
-        document.getElementById("gameStartButton").style.display = "none";
+        document.getElementById("introPanel").style.display = "none";
         
         document.body.style.backgroundBlendMode = "color";
-        document.body.style.backgroundColor = "rgb(235, 202, 106)";
         
-
         //TANK body
         const tank = document.createElement("div");
         tank.id = "playertank";
@@ -130,7 +149,7 @@ function generateWalls(lvl) {
             if (grid[y][x] === 1) {
                 const wall = document.createElement("div");
                 wall.style.position = "absolute";
-                wall.style.background = "black";
+                wall.style.background = WALL_THEMES[getThemeIndex(level)];
                 wall.style.left = (x * CELL_SIZE) + 'px';
                 wall.style.top = (y * CELL_SIZE) + 'px';
                 wall.style.width = CELL_SIZE + 'px';
@@ -235,6 +254,11 @@ function spawnEnemies(lvl) {
         enemy.style.background = "red";
         enemy.style.position = "absolute";
         enemy.style.borderRadius = "4px";
+        enemy.moveX = 0;
+        enemy.moveY = 0;
+        enemy.changeDirectionTime = 0;
+
+        setEnemyRandomDirection(enemy);
 
         let x, y, attempts = 0;
         const gridBoundX = gridCols * CELL_SIZE - CELL_SIZE - TANK_SIZE;
@@ -249,6 +273,49 @@ function spawnEnemies(lvl) {
         enemy.style.top = y + 'px';
         document.body.appendChild(enemy);
         enemies.push(enemy);
+    }
+}
+
+function setEnemyRandomDirection(enemy) {
+    const angle = Math.random() * Math.PI * 2;
+    enemy.moveX = Math.cos(angle);
+    enemy.moveY = Math.sin(angle);
+    enemy.changeDirectionTime = 0.7 + Math.random() * 1.6;
+}
+
+function updateEnemies(dt) {
+    for (let enemy of enemies) {
+        enemy.changeDirectionTime -= dt;
+        if (enemy.changeDirectionTime <= 0) {
+            setEnemyRandomDirection(enemy);
+        }
+
+        const left = parseFloat(enemy.style.left);
+        const top = parseFloat(enemy.style.top);
+        let newLeft = left + enemy.moveX * ENEMY_SPEED * dt;
+        let newTop = top + enemy.moveY * ENEMY_SPEED * dt;
+
+        const maxLeft = gridCols * CELL_SIZE - CELL_SIZE - TANK_SIZE;
+        const maxTop = gridRows * CELL_SIZE - CELL_SIZE - TANK_SIZE;
+        newLeft = Math.max(CELL_SIZE, Math.min(newLeft, maxLeft));
+        newTop = Math.max(CELL_SIZE, Math.min(newTop, maxTop));
+
+        if (isPositionBlocked(newLeft, newTop, TANK_SIZE, TANK_SIZE)) {
+            if (!isPositionBlocked(newLeft, top, TANK_SIZE, TANK_SIZE)) {
+                newTop = top;
+                enemy.moveY *= -1;
+            } else if (!isPositionBlocked(left, newTop, TANK_SIZE, TANK_SIZE)) {
+                newLeft = left;
+                enemy.moveX *= -1;
+            } else {
+                newLeft = left;
+                newTop = top;
+                setEnemyRandomDirection(enemy);
+            }
+        }
+
+        enemy.style.left = newLeft + 'px';
+        enemy.style.top = newTop + 'px';
     }
 }
 
@@ -395,6 +462,7 @@ function setUpLevel(lvl) {
     // Set timer: 60s - 3s/level, minimum 25s
     timeRemaining = Math.max(25, 60 - (lvl - 1) * 3);
     level = lvl;
+    updateBackgroundTheme(lvl);
 
     generateWalls(lvl);
     spawnEnemies(lvl);
@@ -472,6 +540,7 @@ function gameLoop(time) {
         }
         updateHUD();
         updateBullets();
+        updateEnemies(dt);
         updatePlayer(dt);
     }
     requestAnimationFrame(gameLoop);

@@ -1,116 +1,172 @@
-body {
-    overflow: hidden;
-    background-color: rgb(3, 51, 130);
+* {
+    box-sizing: border-box;
 }
-#introTitle {
-    font-family: Arial, sans-serif; 
-    font-size: 100px; 
+
+body {
+    margin: 0;
+    overflow: hidden;
+    min-height: 100vh;
+    background-color:rgb(3, 51, 130);
+    font-family: Arial, sans-serif;
+}
+
+#introPanel {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    position: relative;
+}
+
+.menu-card {
+    width: min(720px, 92vw);
+    min-height: 440px;
+    padding: 52px 56px;
+    border: 2px solid rgba(255, 255, 255, 0.18);
+    border-radius: 28px;
+    background: rgba(7, 32, 82, 0.76);
     color: white;
-    
+    text-align: center;
+    position: relative;
+}
+
+.menu-card::before {
+    content: "";
     position: absolute;
-    left: 50%;
-    top: 20%;
-    transform: translate(-50%, -50%);
+    inset: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 20px;
+    pointer-events: none;
+}
+
+.eyebrow {
+    margin: 0 0 12px;
+    color: rgb(250, 205, 92);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.28em;
+    text-transform: uppercase;
+}
+
+#introTitle {
+    margin: 0;
+    color: white;
+    font-size: clamp(58px, 10vw, 104px);
+    line-height: 0.95;
+    text-transform: uppercase;
+    letter-spacing: -0.06em;
+}
+
+.intro-copy {
+    width: min(520px, 100%);
+    margin: 26px auto 0;
+    color: rgba(255, 255, 255, 0.82);
+    font-size: 20px;
+    line-height: 1.45;
+}
+
+.control-row {
+    display: flex;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 34px 0;
+}
+
+.control-row span {
+    padding: 10px 14px;
+    border: 1px solid rgba(255, 255, 255, 0.16);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.08);
+    color: rgba(255, 255, 255, 0.78);
+    font-size: 15px;
+}
+
+.control-row strong {
+    color: white;
+    margin-right: 4px;
 }
 
 #gameStartButton {
-    position: absolute;
-    left: 50%;
-    top: 65%;
-    transform: translate(-50%, -50%);
-    width: 200px;
-    height: auto;
-    font-size: 50px;
-    padding: 10px 20px;
-    border-radius: 20px;
+    min-width: 190px;
+    padding: 16px 34px;
+    border: 0;
+    border-radius: 16px;
+    background: rgb(250, 205, 92);
+    color: rgb(15, 28, 48);
+    font-size: 30px;
+    font-weight: 800;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: transform 0.12s ease, box-shadow 0.12s ease, background-color 0.12s ease;
 }
 
-
-#gameInfoBg {
-    position: absolute;
-    z-index: -1;
-    left: 50%;
-    top: 45%;
-    transform: translate(-50%, -50%);
-    width: 850px;
-    height: 500px;
-    background-color: rgb(8, 74, 217);
-    border-radius: 20px;
+#gameStartButton:hover {
+    background: rgb(255, 218, 110);
+    transform: translateY(-2px);
 }
 
-
-#gameInfo {
-    position: absolute;
-    z-index: 1;
-    left: 50%;
-    top: 45%;
-    transform: translate(-50%, -50%);
-    width: 850px;
-    height: 500px;
-    color: white;
-    font-family: Arial, sans-serif;
-    font-size: 24px;
-    padding: 20px;
-    box-sizing: border-box;
+#gameStartButton:active {
+    transform: translateY(6px);
 }
 
-#gameControls {
+.mini-tank {
+    width: 58px;
+    height: 42px;
+    border-radius: 10px;
+    background: rgb(48, 142, 62);
     position: absolute;
-    z-index: 1;
-    left: 50%;
-    top: 55%;
-    transform: translate(-50%, -50%);
-    width: 850px;
-    height: 100px;
-    color: white;
-    font-family: Arial, sans-serif;
-    font-size: 24px;
-    padding: 20px;
-    box-sizing: border-box;
+    opacity: 0.42;
+    box-shadow: inset 0 -8px 0 rgba(0, 0, 0, 0.16);
 }
 
-#gameOver {
+.mini-tank span {
+    width: 44px;
+    height: 8px;
+    background: rgb(17, 20, 24);
     position: absolute;
-    z-index: 1;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    width: 850px;
-    height: 500px;
-    color: white;
-    font-family: Arial, sans-serif;
-    font-size: 24px;
-    padding: 20px;
-    box-sizing: border-box;
+    left: 44px;
+    top: 17px;
+    border-radius: 999px;
 }
 
-#gameWin {
-    position: absolute;
-    z-index: 1;
-    left: 50%;
-    top: 50%;
-    transform: translate(-50%, -50%);
-    width: 850px;
-    height: 500px;
-    color: white;
-    font-family: Arial, sans-serif;
-    font-size: 24px;
-    padding: 20px;
-    box-sizing: border-box;
+.mini-tank-left {
+    left: 9vw;
+    top: 24vh;
+    transform: rotate(-18deg);
 }
 
+.mini-tank-right {
+    right: 10vw;
+    bottom: 18vh;
+    transform: rotate(156deg);
+}
+
+#gameInfoBg,
+#gameInfo,
+#gameControls,
+#gameOver,
+#gameWin,
 #restartButton {
-    position: absolute;
-    left: 50%;
-    top: 65%;
-    transform: translate(-50%, -50%);
-    width: 200px;
-    height: auto;
-    font-size: 50px;
-    padding: 10px 20px;
-    border-radius: 20px;
+    display: none;
 }
+
 #restartButton:hover {
     background-color: rgb(255, 0, 0);
     color: white;
+}
+
+@media (max-width: 620px) {
+    .menu-card {
+        padding: 42px 24px;
+    }
+
+    .intro-copy {
+        font-size: 17px;
+    }
+
+    .mini-tank {
+        display: none;
+    }
 }

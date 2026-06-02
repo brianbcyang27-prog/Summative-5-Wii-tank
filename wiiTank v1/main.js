@@ -7,9 +7,18 @@ let bullets = [];
 let barrelAngle = 0;
 const TANK_SIZE = 30;
 const BULLET_SPEED = 6;
+const ENEMY_BULLET_SPEED = 4;
 const CELL_SIZE = 40;
 const PLAYER_SPEED = 200; // pixels per second
 const ENEMY_SPEED = 80; // pixels per second
+const MAX_ENEMIES = 12;
+const BASE_ROUND_TIME = 20;
+const TIME_PER_ENEMY = 5;
+const MIN_ROUND_TIME = 25;
+const MAX_ROUND_TIME = 75;
+const ENEMY_SHOOT_RANGE = 520;
+const ENEMY_SHOOT_COOLDOWN_MIN = 1.4;
+const ENEMY_SHOOT_COOLDOWN_MAX = 2.8;
 let gridCols = 0;
 let gridRows = 0;
 let keys = {};
@@ -45,6 +54,17 @@ function updateBackgroundTheme(lvl) {
     const themeIndex = getThemeIndex(lvl);
     document.body.style.transition = "background-color 1s ease";
     document.body.style.backgroundColor = LEVEL_THEMES[themeIndex];
+}
+
+
+function getEnemyCount(lvl) {
+    return Math.min(2 + lvl, MAX_ENEMIES);
+}
+
+function getRoundTime(lvl) {
+    const enemyCount = getEnemyCount(lvl);
+    const levelPressure = Math.floor((lvl - 1) / 3) * 2;
+    return Math.max(MIN_ROUND_TIME, Math.min(MAX_ROUND_TIME, BASE_ROUND_TIME + enemyCount * TIME_PER_ENEMY - levelPressure));
 }
 
 // AABB collision check
@@ -245,7 +265,7 @@ function updatePlayer(dt) {
 }
 
 function spawnEnemies(lvl) {
-    const count = Math.min(2 + lvl, 10);
+    const count = getEnemyCount(lvl);
     for (let i = 0; i < count; i++) {
         const enemy = document.createElement("div");
         enemy.className = "enemy";
@@ -253,10 +273,23 @@ function spawnEnemies(lvl) {
         enemy.style.height = TANK_SIZE + "px";
         enemy.style.background = "red";
         enemy.style.position = "absolute";
-        enemy.style.borderRadius = "4px";
+
+        const enemyBarrel = document.createElement("div");
+        enemyBarrel.className = "enemy-barrel";
+        enemyBarrel.style.width = "26px";
+        enemyBarrel.style.height = "7px";
+        enemyBarrel.style.background = "rgb(35, 10, 10)";
+        enemyBarrel.style.position = "absolute";
+        enemyBarrel.style.left = "15px";
+        enemyBarrel.style.top = "11.5px";
+        enemyBarrel.style.transformOrigin = "0% 50%";
+        enemy.appendChild(enemyBarrel);
+        enemy.barrel = enemyBarrel;
+
         enemy.moveX = 0;
         enemy.moveY = 0;
         enemy.changeDirectionTime = 0;
+        enemy.shootCooldown = ENEMY_SHOOT_COOLDOWN_MIN + Math.random() * (ENEMY_SHOOT_COOLDOWN_MAX - ENEMY_SHOOT_COOLDOWN_MIN);
 
         setEnemyRandomDirection(enemy);
 
@@ -283,8 +316,87 @@ function setEnemyRandomDirection(enemy) {
     enemy.changeDirectionTime = 0.7 + Math.random() * 1.6;
 }
 
+
+function hasLineOfSight(x1, y1, x2, y2) {
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const distance = Math.hypot(dx, dy);
+    const steps = Math.ceil(distance / 12);
+
+    for (let i = 1; i < steps; i++) {
+        const x = x1 + (dx * i) / steps;
+        const y = y1 + (dy * i) / steps;
+        if (isPositionBlocked(x - 3, y - 3, 6, 6)) {
+            return false;
+        }
+    }
+    return true;
+}
+
+function createBullet(x, y, angleRad, owner) {
+    const bullet = document.createElement("div");
+    bullet.style.width = "10px";
+    bullet.style.height = "10px";
+    bullet.style.borderRadius = "50%";
+    bullet.style.position = "absolute";
+    bullet.style.zIndex = "3";
+    bullet.style.left = (x - 5) + 'px';
+    bullet.style.top = (y - 5) + 'px';
+    bullet.owner = owner;
+
+    if (owner === "enemy") {
+        bullet.style.background = "rgb(255, 35, 35)";
+        bullet.style.border = "2px solid white";
+    } else {
+        bullet.style.background = "rgb(20, 145, 255)";
+        bullet.style.border = "2px solid white";
+    }
+
+    const speed = owner === "enemy" ? ENEMY_BULLET_SPEED : BULLET_SPEED;
+    bullet.dx = Math.cos(angleRad) * speed;
+    bullet.dy = Math.sin(angleRad) * speed;
+
+    document.body.appendChild(bullet);
+    bullets.push(bullet);
+}
+
+function enemyShootAtPlayer(enemy) {
+    const tank = document.getElementById('playertank');
+    if (!tank) return;
+
+    const enemyCenterX = enemy.offsetLeft + TANK_SIZE / 2;
+    const enemyCenterY = enemy.offsetTop + TANK_SIZE / 2;
+    const tankCenterX = tank.offsetLeft + TANK_SIZE / 2;
+    const tankCenterY = tank.offsetTop + TANK_SIZE / 2;
+    const dx = tankCenterX - enemyCenterX;
+    const dy = tankCenterY - enemyCenterY;
+    const distance = Math.hypot(dx, dy);
+
+    if (distance > ENEMY_SHOOT_RANGE) return;
+    if (!hasLineOfSight(enemyCenterX, enemyCenterY, tankCenterX, tankCenterY)) return;
+
+    const angleRad = Math.atan2(dy, dx);
+    const startX = enemyCenterX + Math.cos(angleRad) * 22;
+    const startY = enemyCenterY + Math.sin(angleRad) * 22;
+    createBullet(startX, startY, angleRad, "enemy");
+}
+
+function updateEnemyAim(enemy) {
+    const tank = document.getElementById('playertank');
+    if (!tank || !enemy.barrel) return;
+
+    const enemyCenterX = enemy.offsetLeft + TANK_SIZE / 2;
+    const enemyCenterY = enemy.offsetTop + TANK_SIZE / 2;
+    const tankCenterX = tank.offsetLeft + TANK_SIZE / 2;
+    const tankCenterY = tank.offsetTop + TANK_SIZE / 2;
+    const angleDeg = Math.atan2(tankCenterY - enemyCenterY, tankCenterX - enemyCenterX) * 180 / Math.PI;
+
+    enemy.barrel.style.transform = `rotate(${angleDeg}deg)`;
+}
+
 function updateEnemies(dt) {
     for (let enemy of enemies) {
+        updateEnemyAim(enemy);
         enemy.changeDirectionTime -= dt;
         if (enemy.changeDirectionTime <= 0) {
             setEnemyRandomDirection(enemy);
@@ -316,6 +428,12 @@ function updateEnemies(dt) {
 
         enemy.style.left = newLeft + 'px';
         enemy.style.top = newTop + 'px';
+
+        enemy.shootCooldown -= dt;
+        if (enemy.shootCooldown <= 0) {
+            enemyShootAtPlayer(enemy);
+            enemy.shootCooldown = ENEMY_SHOOT_COOLDOWN_MIN + Math.random() * (ENEMY_SHOOT_COOLDOWN_MAX - ENEMY_SHOOT_COOLDOWN_MIN);
+        }
     }
 }
 
@@ -329,25 +447,10 @@ function shoot() {
     const tankCenterY = tank.offsetTop + TANK_SIZE / 2;
     const angleRad = barrelAngle * Math.PI / 180;
 
-    const bullet = document.createElement("div");
-    bullet.style.width = "8px";
-    bullet.style.height = "8px";
-    bullet.style.background = "yellow";
-    bullet.style.borderRadius = "50%";
-    bullet.style.position = "absolute";
-    bullet.style.zIndex = "2";
-
     // Start bullet at barrel tip (barrel width = 30px)
-    const startX = tankCenterX + Math.cos(angleRad) * 30 - 4;
-    const startY = tankCenterY + Math.sin(angleRad) * 30 - 4;
-    bullet.style.left = startX + 'px';
-    bullet.style.top = startY + 'px';
-
-    bullet.dx = Math.cos(angleRad) * BULLET_SPEED;
-    bullet.dy = Math.sin(angleRad) * BULLET_SPEED;
-
-    document.body.appendChild(bullet);
-    bullets.push(bullet);
+    const startX = tankCenterX + Math.cos(angleRad) * 30;
+    const startY = tankCenterY + Math.sin(angleRad) * 30;
+    createBullet(startX, startY, angleRad, "player");
 }
 
 function updateBullets() {
@@ -372,8 +475,8 @@ function updateBullets() {
             }
         }
 
-        // Enemy collision
-        if (!hit) {
+        // Player bullets can destroy enemies.
+        if (!hit && b.owner === "player") {
             for (let j = enemies.length - 1; j >= 0; j--) {
                 const eRect = enemies[j].getBoundingClientRect();
                 if (rectsOverlap(bRect, eRect)) {
@@ -382,6 +485,15 @@ function updateBullets() {
                     hit = true;
                     break;
                 }
+            }
+        }
+
+        // Enemy bullets end the round if they hit the player.
+        if (!hit && b.owner === "enemy") {
+            const tank = document.getElementById('playertank');
+            if (tank && rectsOverlap(bRect, tank.getBoundingClientRect())) {
+                hit = true;
+                gameOver("SHOT DOWN");
             }
         }
 
@@ -459,9 +571,8 @@ function setUpLevel(lvl) {
     }
 
     gameStatus = "running";
-    // Set timer: 60s - 3s/level, minimum 25s
-    timeRemaining = Math.max(25, 60 - (lvl - 1) * 3);
     level = lvl;
+    timeRemaining = getRoundTime(lvl);
     updateBackgroundTheme(lvl);
 
     generateWalls(lvl);
@@ -501,7 +612,7 @@ function levelComplete() {
 
 // ==================== GAME OVER ====================
 
-function gameOver() {
+function gameOver(title = "TIME\'S UP!") {
     gameStatus = "over";
 
     const ov = document.createElement('div');
@@ -513,7 +624,7 @@ function gameOver() {
         font-family:Arial;color:white;
     `;
     ov.innerHTML = `
-        <h1 style="color:#e74c3c;font-size:64px;margin:0;text-shadow:0 0 30px #e74c3c;">TIME'S UP!</h1>
+        <h1 style="color:#e74c3c;font-size:64px;margin:0;">${title}</h1>
         <p style="font-size:28px;margin:15px 0 5px;">Reached Level ${level}</p>
         <p style="font-size:32px;color:#f39c12;margin:5px 0 30px;">Final Score: ${score}</p>
         <button id="gameOverRestart" style="padding:15px 50px;font-size:24px;cursor:pointer;

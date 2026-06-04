@@ -11,6 +11,7 @@ const ENEMY_BULLET_SPEED = 4;
 const CELL_SIZE = 40;
 const PLAYER_SPEED = 200; // pixels per second
 const ENEMY_SPEED = 80; // pixels per second
+const BURST_ENEMY_SPEED = 45; // pixels per second
 const MAX_ENEMIES = 12;
 const BASE_ROUND_TIME = 20;
 const TIME_PER_ENEMY = 5;
@@ -19,6 +20,18 @@ const MAX_ROUND_TIME = 75;
 const ENEMY_SHOOT_RANGE = 520;
 const ENEMY_SHOOT_COOLDOWN_MIN = 1.4;
 const ENEMY_SHOOT_COOLDOWN_MAX = 2.8;
+const BURST_ENEMY_LEVEL = 2;
+const BURST_ENEMY_MAG_SIZE = 4;
+const BURST_ENEMY_BURST_GAP = 0.16;
+const BURST_ENEMY_RELOAD_TIME = 3.2;
+const ARTILLERY_ENEMY_LEVEL = 4;
+const ARTILLERY_ENEMY_SIZE = 44;
+const ARTILLERY_ENEMY_SPEED = 18;
+const ARTILLERY_ENEMY_RANGE_RATIO = 0.5;
+const ARTILLERY_ENEMY_WINDUP_TIME = 1.5;
+const ARTILLERY_ENEMY_FIRING_TIME = 0;
+const ARTILLERY_ENEMY_COOLDOWN = 2.0;
+const ARTILLERY_BULLET_SPEED = 5;
 let gridCols = 0;
 let gridRows = 0;
 let keys = {};
@@ -26,7 +39,6 @@ let keys = {};
 // Level / score / timer
 let level = 1;
 let score = 0;
-let timeRemaining = 0;
 let lastTime = 0;
 let gameLoopRunning = false;
 
@@ -264,16 +276,55 @@ function updatePlayer(dt) {
     tank.style.top = newTop + 'px';
 }
 
-function spawnEnemies(lvl) {
-    const count = getEnemyCount(lvl);
-    for (let i = 0; i < count; i++) {
-        const enemy = document.createElement("div");
-        enemy.className = "enemy";
-        enemy.style.width = TANK_SIZE + "px";
-        enemy.style.height = TANK_SIZE + "px";
-        enemy.style.background = "red";
-        enemy.style.position = "absolute";
+function shouldSpawnBurstEnemy(lvl, index) {
+    if (lvl < BURST_ENEMY_LEVEL) return false;
+    if (lvl === BURST_ENEMY_LEVEL && index === 0) return true;
+    return Math.random() < 0.28;
+}
 
+function shouldSpawnArtilleryEnemy(lvl, index) {
+    if (lvl < ARTILLERY_ENEMY_LEVEL) return false;
+    if (lvl === ARTILLERY_ENEMY_LEVEL && index === 0) return true;
+    return Math.random() < 0.18;
+}
+
+function createEnemy(type = "normal") {
+    const enemy = document.createElement("div");
+    enemy.className = type === "normal" ? "enemy" : `enemy ${type}-enemy`;
+    enemy.enemyType = type;
+    enemy.enemySize = type === "artillery" ? ARTILLERY_ENEMY_SIZE : TANK_SIZE;
+    enemy.style.width = enemy.enemySize + "px";
+    enemy.style.height = enemy.enemySize + "px";
+    enemy.style.position = "absolute";
+
+    if (type === "burst") {
+        enemy.style.background = "rgb(145, 44, 185)";
+        enemy.ammo = BURST_ENEMY_MAG_SIZE;
+        enemy.reloadTimer = 0;
+        enemy.burstTimer = 0;
+    } else if (type === "artillery") {
+        enemy.style.background = "rgb(128, 82, 42)";
+        enemy.shootCooldown = 1.5;
+        enemy.artilleryWindupTimer = 0;
+        enemy.artilleryFiringTimer = 0;
+    } else {
+        enemy.style.background = "red";
+    }
+
+    if (type === "artillery") {
+        const mortar = document.createElement("div");
+        mortar.className = "artillery-mortar";
+        mortar.style.width = "30px";
+        mortar.style.height = "30px";
+        mortar.style.borderRadius = "50%";
+        mortar.style.background = "rgb(55, 35, 20)";
+        mortar.style.border = "3px solid rgb(35, 20, 12)";
+        mortar.style.position = "absolute";
+        mortar.style.left = "7px";
+        mortar.style.top = "7px";
+        enemy.appendChild(mortar);
+        enemy.barrel = mortar;
+    } else {
         const enemyBarrel = document.createElement("div");
         enemyBarrel.className = "enemy-barrel";
         enemyBarrel.style.width = "26px";
@@ -285,22 +336,38 @@ function spawnEnemies(lvl) {
         enemyBarrel.style.transformOrigin = "0% 50%";
         enemy.appendChild(enemyBarrel);
         enemy.barrel = enemyBarrel;
+    }
 
-        enemy.moveX = 0;
-        enemy.moveY = 0;
-        enemy.changeDirectionTime = 0;
+    enemy.moveX = 0;
+    enemy.moveY = 0;
+    enemy.changeDirectionTime = 0;
+    if (type !== "artillery") {
         enemy.shootCooldown = ENEMY_SHOOT_COOLDOWN_MIN + Math.random() * (ENEMY_SHOOT_COOLDOWN_MAX - ENEMY_SHOOT_COOLDOWN_MIN);
+    }
+    setEnemyRandomDirection(enemy);
+    return enemy;
+}
 
-        setEnemyRandomDirection(enemy);
+function spawnEnemies(lvl) {
+    const count = getEnemyCount(lvl);
+    for (let i = 0; i < count; i++) {
+        let enemyType = "normal";
+        if (shouldSpawnArtilleryEnemy(lvl, i)) {
+            enemyType = "artillery";
+        } else if (shouldSpawnBurstEnemy(lvl, i)) {
+            enemyType = "burst";
+        }
+        const enemy = createEnemy(enemyType);
 
         let x, y, attempts = 0;
-        const gridBoundX = gridCols * CELL_SIZE - CELL_SIZE - TANK_SIZE;
-        const gridBoundY = gridRows * CELL_SIZE - CELL_SIZE - TANK_SIZE;
+        const enemySize = enemy.enemySize || TANK_SIZE;
+        const gridBoundX = gridCols * CELL_SIZE - CELL_SIZE - enemySize;
+        const gridBoundY = gridRows * CELL_SIZE - CELL_SIZE - enemySize;
         do {
             x = Math.random() * (gridBoundX - CELL_SIZE) + CELL_SIZE;
             y = Math.random() * (gridBoundY - CELL_SIZE) + CELL_SIZE;
             attempts++;
-        } while (isPositionBlocked(x, y, TANK_SIZE, TANK_SIZE) && attempts < 100);
+        } while (isPositionBlocked(x, y, enemySize, enemySize) && attempts < 100);
 
         enemy.style.left = x + 'px';
         enemy.style.top = y + 'px';
@@ -344,7 +411,13 @@ function createBullet(x, y, angleRad, owner) {
     bullet.style.top = (y - 5) + 'px';
     bullet.owner = owner;
 
-    if (owner === "enemy") {
+    if (owner === "artillery") {
+        bullet.style.width = "30px";
+        bullet.style.height = "30px";
+        bullet.style.background = "rgb(85, 45, 20)";
+        bullet.style.border = "3px solid rgb(235, 180, 100)";
+        bullet.style.zIndex = "6";
+    } else if (owner === "enemy") {
         bullet.style.background = "rgb(255, 35, 35)";
         bullet.style.border = "2px solid white";
     } else {
@@ -352,7 +425,7 @@ function createBullet(x, y, angleRad, owner) {
         bullet.style.border = "2px solid white";
     }
 
-    const speed = owner === "enemy" ? ENEMY_BULLET_SPEED : BULLET_SPEED;
+    const speed = owner === "artillery" ? ARTILLERY_BULLET_SPEED : (owner === "enemy" ? ENEMY_BULLET_SPEED : BULLET_SPEED);
     bullet.dx = Math.cos(angleRad) * speed;
     bullet.dy = Math.sin(angleRad) * speed;
 
@@ -360,33 +433,107 @@ function createBullet(x, y, angleRad, owner) {
     bullets.push(bullet);
 }
 
-function enemyShootAtPlayer(enemy) {
+function getEnemyShotData(enemy, ignoreWalls = false) {
     const tank = document.getElementById('playertank');
-    if (!tank) return;
+    if (!tank) return null;
 
-    const enemyCenterX = enemy.offsetLeft + TANK_SIZE / 2;
-    const enemyCenterY = enemy.offsetTop + TANK_SIZE / 2;
+    const enemySize = enemy.enemySize || TANK_SIZE;
+    const enemyCenterX = enemy.offsetLeft + enemySize / 2;
+    const enemyCenterY = enemy.offsetTop + enemySize / 2;
     const tankCenterX = tank.offsetLeft + TANK_SIZE / 2;
     const tankCenterY = tank.offsetTop + TANK_SIZE / 2;
     const dx = tankCenterX - enemyCenterX;
     const dy = tankCenterY - enemyCenterY;
     const distance = Math.hypot(dx, dy);
 
-    if (distance > ENEMY_SHOOT_RANGE) return;
-    if (!hasLineOfSight(enemyCenterX, enemyCenterY, tankCenterX, tankCenterY)) return;
+    const range = enemy.enemyType === "artillery" ? Math.max(window.innerWidth, window.innerHeight) * ARTILLERY_ENEMY_RANGE_RATIO : ENEMY_SHOOT_RANGE;
+    if (distance > range) return null;
+    if (!ignoreWalls && !hasLineOfSight(enemyCenterX, enemyCenterY, tankCenterX, tankCenterY)) return null;
 
     const angleRad = Math.atan2(dy, dx);
-    const startX = enemyCenterX + Math.cos(angleRad) * 22;
-    const startY = enemyCenterY + Math.sin(angleRad) * 22;
-    createBullet(startX, startY, angleRad, "enemy");
+    return {
+        angleRad,
+        startX: enemyCenterX + Math.cos(angleRad) * 22,
+        startY: enemyCenterY + Math.sin(angleRad) * 22
+    };
+}
+
+function enemyShootAtPlayer(enemy) {
+    const shot = getEnemyShotData(enemy);
+    if (!shot) return false;
+    createBullet(shot.startX, shot.startY, shot.angleRad, "enemy");
+    return true;
+}
+
+function updateBurstEnemyWeapon(enemy, dt) {
+    if (enemy.reloadTimer > 0) {
+        enemy.reloadTimer -= dt;
+        if (enemy.reloadTimer <= 0) {
+            enemy.ammo = BURST_ENEMY_MAG_SIZE;
+            enemy.reloadTimer = 0;
+            enemy.shootCooldown = 0.5;
+        }
+        return;
+    }
+
+    enemy.shootCooldown -= dt;
+    if (enemy.shootCooldown > 0) return;
+
+    const fired = enemyShootAtPlayer(enemy);
+    if (fired) {
+        enemy.ammo--;
+        if (enemy.ammo <= 0) {
+            enemy.reloadTimer = BURST_ENEMY_RELOAD_TIME;
+            enemy.shootCooldown = BURST_ENEMY_RELOAD_TIME;
+        } else {
+            enemy.shootCooldown = BURST_ENEMY_BURST_GAP;
+        }
+    } else {
+        enemy.shootCooldown = 0.35;
+    }
+}
+
+function artilleryShootAtPlayer(enemy) {
+    const shot = getEnemyShotData(enemy, true);
+    if (!shot) return false;
+    createBullet(shot.startX, shot.startY, shot.angleRad, "artillery");
+    return true;
+}
+
+function updateArtilleryEnemyWeapon(enemy, dt) {
+    if (enemy.artilleryFiringTimer > 0) {
+        enemy.artilleryFiringTimer -= dt;
+        return;
+    }
+
+    if (enemy.artilleryWindupTimer > 0) {
+        enemy.artilleryWindupTimer -= dt;
+        if (enemy.artilleryWindupTimer <= 0) {
+            artilleryShootAtPlayer(enemy);
+            enemy.artilleryFiringTimer = ARTILLERY_ENEMY_FIRING_TIME;
+            enemy.shootCooldown = ARTILLERY_ENEMY_COOLDOWN;
+        }
+        return;
+    }
+
+    enemy.shootCooldown -= dt;
+    if (enemy.shootCooldown <= 0) {
+        const shot = getEnemyShotData(enemy, true);
+        if (shot) {
+            enemy.artilleryWindupTimer = ARTILLERY_ENEMY_WINDUP_TIME;
+        } else {
+            enemy.shootCooldown = 0.6;
+        }
+    }
 }
 
 function updateEnemyAim(enemy) {
     const tank = document.getElementById('playertank');
     if (!tank || !enemy.barrel) return;
 
-    const enemyCenterX = enemy.offsetLeft + TANK_SIZE / 2;
-    const enemyCenterY = enemy.offsetTop + TANK_SIZE / 2;
+    const enemySize = enemy.enemySize || TANK_SIZE;
+    const enemyCenterX = enemy.offsetLeft + enemySize / 2;
+    const enemyCenterY = enemy.offsetTop + enemySize / 2;
     const tankCenterX = tank.offsetLeft + TANK_SIZE / 2;
     const tankCenterY = tank.offsetTop + TANK_SIZE / 2;
     const angleDeg = Math.atan2(tankCenterY - enemyCenterY, tankCenterX - enemyCenterX) * 180 / Math.PI;
@@ -404,19 +551,24 @@ function updateEnemies(dt) {
 
         const left = parseFloat(enemy.style.left);
         const top = parseFloat(enemy.style.top);
-        let newLeft = left + enemy.moveX * ENEMY_SPEED * dt;
-        let newTop = top + enemy.moveY * ENEMY_SPEED * dt;
+        let enemySpeed = ENEMY_SPEED;
+        if (enemy.enemyType === "burst") enemySpeed = BURST_ENEMY_SPEED;
+        if (enemy.enemyType === "artillery") enemySpeed = ARTILLERY_ENEMY_SPEED;
+        const enemyIsLocked = enemy.enemyType === "artillery" && (enemy.artilleryWindupTimer > 0 || enemy.artilleryFiringTimer > 0);
+        let newLeft = enemyIsLocked ? left : left + enemy.moveX * enemySpeed * dt;
+        let newTop = enemyIsLocked ? top : top + enemy.moveY * enemySpeed * dt;
 
-        const maxLeft = gridCols * CELL_SIZE - CELL_SIZE - TANK_SIZE;
-        const maxTop = gridRows * CELL_SIZE - CELL_SIZE - TANK_SIZE;
+        const enemySize = enemy.enemySize || TANK_SIZE;
+        const maxLeft = gridCols * CELL_SIZE - CELL_SIZE - enemySize;
+        const maxTop = gridRows * CELL_SIZE - CELL_SIZE - enemySize;
         newLeft = Math.max(CELL_SIZE, Math.min(newLeft, maxLeft));
         newTop = Math.max(CELL_SIZE, Math.min(newTop, maxTop));
 
-        if (isPositionBlocked(newLeft, newTop, TANK_SIZE, TANK_SIZE)) {
-            if (!isPositionBlocked(newLeft, top, TANK_SIZE, TANK_SIZE)) {
+        if (isPositionBlocked(newLeft, newTop, enemySize, enemySize)) {
+            if (!isPositionBlocked(newLeft, top, enemySize, enemySize)) {
                 newTop = top;
                 enemy.moveY *= -1;
-            } else if (!isPositionBlocked(left, newTop, TANK_SIZE, TANK_SIZE)) {
+            } else if (!isPositionBlocked(left, newTop, enemySize, enemySize)) {
                 newLeft = left;
                 enemy.moveX *= -1;
             } else {
@@ -429,10 +581,16 @@ function updateEnemies(dt) {
         enemy.style.left = newLeft + 'px';
         enemy.style.top = newTop + 'px';
 
-        enemy.shootCooldown -= dt;
-        if (enemy.shootCooldown <= 0) {
-            enemyShootAtPlayer(enemy);
-            enemy.shootCooldown = ENEMY_SHOOT_COOLDOWN_MIN + Math.random() * (ENEMY_SHOOT_COOLDOWN_MAX - ENEMY_SHOOT_COOLDOWN_MIN);
+        if (enemy.enemyType === "burst") {
+            updateBurstEnemyWeapon(enemy, dt);
+        } else if (enemy.enemyType === "artillery") {
+            updateArtilleryEnemyWeapon(enemy, dt);
+        } else {
+            enemy.shootCooldown -= dt;
+            if (enemy.shootCooldown <= 0) {
+                enemyShootAtPlayer(enemy);
+                enemy.shootCooldown = ENEMY_SHOOT_COOLDOWN_MIN + Math.random() * (ENEMY_SHOOT_COOLDOWN_MAX - ENEMY_SHOOT_COOLDOWN_MIN);
+            }
         }
     }
 }
@@ -466,12 +624,14 @@ function updateBullets() {
         const bRect = b.getBoundingClientRect();
         let hit = false;
 
-        // Wall collision
-        for (let wall of walls) {
-            const wRect = wall.getBoundingClientRect();
-            if (rectsOverlap(bRect, wRect)) {
-                hit = true;
-                break;
+        // Wall collision. Artillery shells fly over walls, so walls do not stop them.
+        if (b.owner !== "artillery") {
+            for (let wall of walls) {
+                const wRect = wall.getBoundingClientRect();
+                if (rectsOverlap(bRect, wRect)) {
+                    hit = true;
+                    break;
+                }
             }
         }
 
@@ -489,7 +649,7 @@ function updateBullets() {
         }
 
         // Enemy bullets end the round if they hit the player.
-        if (!hit && b.owner === "enemy") {
+        if (!hit && (b.owner === "enemy" || b.owner === "artillery")) {
             const tank = document.getElementById('playertank');
             if (tank && rectsOverlap(bRect, tank.getBoundingClientRect())) {
                 hit = true;
@@ -520,7 +680,6 @@ function updateBullets() {
 function createHUD() {
     document.getElementById('hudLevel')?.remove();
     document.getElementById('hudScore')?.remove();
-    document.getElementById('hudTimer')?.remove();
 
     const style = 'position:fixed;top:10px;color:white;font-family:Arial;font-size:22px;z-index:100;pointer-events:none;';
 
@@ -532,26 +691,15 @@ function createHUD() {
     scr.id = 'hudScore'; scr.style.cssText = style + 'left:50%;transform:translateX(-50%);';
     document.body.appendChild(scr);
 
-    const tmr = document.createElement('div');
-    tmr.id = 'hudTimer'; tmr.style.cssText = style + 'right:20px;';
-    document.body.appendChild(tmr);
-
     updateHUD();
 }
 
 function updateHUD() {
     const lvlEl = document.getElementById('hudLevel');
     const scrEl = document.getElementById('hudScore');
-    const tmrEl = document.getElementById('hudTimer');
-
     if (lvlEl) lvlEl.textContent = `Level ${level}`;
     if (scrEl) scrEl.textContent = `Score: ${score}`;
 
-    if (tmrEl) {
-        const t = Math.ceil(timeRemaining);
-        tmrEl.textContent = `Time: ${t}s`;
-        tmrEl.style.color = t <= 10 ? '#e74c3c' : 'white';
-    }
 }
 
 // ==================== LEVEL SETUP ====================
@@ -572,12 +720,12 @@ function setUpLevel(lvl) {
 
     gameStatus = "running";
     level = lvl;
-    timeRemaining = getRoundTime(lvl);
     updateBackgroundTheme(lvl);
 
     generateWalls(lvl);
     spawnEnemies(lvl);
     updateHUD();
+    showLevelIntro(lvl);
 
     // Start game loop once
     if (!gameLoopRunning) {
@@ -587,10 +735,40 @@ function setUpLevel(lvl) {
     }
 }
 
+
+function showLevelIntro(lvl) {
+    document.getElementById('levelIntroBox')?.remove();
+
+    let introHTML = "";
+    if (lvl === BURST_ENEMY_LEVEL) {
+        introHTML = `
+            <strong>New enemy: Burst Tank</strong><br>
+            Slow movement. Saves ammo. Fires fast bursts. Reloads fully when empty.
+        `;
+    } else if (lvl === ARTILLERY_ENEMY_LEVEL) {
+        introHTML = `
+            <strong>New enemy: Artillery Tank</strong><br>
+            Huge and extremely slow. Stops before firing. Its attacks fly over walls from long range.
+        `;
+    } else {
+        return;
+    }
+
+    const box = document.createElement('div');
+    box.id = 'levelIntroBox';
+    box.innerHTML = introHTML;
+    document.body.appendChild(box);
+
+    setTimeout(() => {
+        box.classList.add('fade-out');
+        setTimeout(() => box.remove(), 900);
+    }, 4200);
+}
+
 // ==================== LEVEL COMPLETE ====================
 
 function levelComplete() {
-    const bonus = Math.floor(timeRemaining) * 10;
+    const bonus = level * 100;
     score += bonus;
 
     const msg = document.createElement('div');
@@ -601,7 +779,7 @@ function levelComplete() {
         background:rgba(0,0,0,0.6);padding:30px 50px;border-radius:16px;
         pointer-events:none;transition:opacity 0.5s;
     `;
-    msg.innerHTML = `Level ${level} Clear!<br><span style="font-size:24px;color:#f39c12;">+${bonus} time bonus</span>`;
+    msg.innerHTML = `Level ${level} Clear!<br><span style="font-size:24px;color:#f39c12;">+${bonus} bonus score</span>`;
     document.body.appendChild(msg);
 
     setTimeout(() => {
@@ -644,11 +822,6 @@ function gameLoop(time) {
     lastTime = time;
 
     if (gameStatus === "running") {
-        timeRemaining -= dt;
-        if (timeRemaining <= 0) {
-            timeRemaining = 0;
-            gameOver();
-        }
         updateHUD();
         updateBullets();
         updateEnemies(dt);
